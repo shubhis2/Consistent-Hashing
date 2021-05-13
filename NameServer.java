@@ -9,14 +9,14 @@ import java.io.*;
 import java.util.*;
 
 public class NameServer implements Serializable {
-	
+
 	private static final long serialVersionUID = 1L;
 	int id;
 	int serverPort;
 	String serverIp;
-	int predessorID;
-	String predessorIp;
-	int predessorPort;
+	int predecessorID;
+	String predecessorIp;
+	int predecessorPort;
 	int successorID;
 	String successorIp;
 	int successorPort;
@@ -25,7 +25,7 @@ public class NameServer implements Serializable {
 	String slash;
 	String OS;
 	ArrayList<Integer> trail = new ArrayList<>();
-	HashMap<Integer, String> data = new HashMap<Integer, String>();
+	SortedMap<Integer, String> data = new TreeMap<Integer, String>();
 
 	public NameServer(String fileName) throws UnknownHostException, IOException {
 		// TODO Auto-generated constructor stub
@@ -47,14 +47,15 @@ public class NameServer implements Serializable {
 				bootStrapPort = Integer.parseInt(line[1]);
 			}
 			sc.close();
+			System.out.println("Nameserver: " + this.id + ":" + this.serverPort);
 			InetAddress inetAddress = InetAddress.getLocalHost();
 			this.serverIp = inetAddress.getHostAddress();
 			this.successorID = 0;
 			this.successorIp = null;
 			this.successorPort = -1;
-			this.predessorID = 0;
-			this.predessorPort = -1;
-			this.predessorIp = null;
+			this.predecessorID = 0;
+			this.predecessorPort = -1;
+			this.predecessorIp = null;
 
 		} catch (FileNotFoundException e) {
 			// TODO Auto-generated catch block
@@ -68,7 +69,7 @@ public class NameServer implements Serializable {
 			DataInputStream dis = new DataInputStream(s.getInputStream());
 			DataOutputStream dos = new DataOutputStream(s.getOutputStream());
 			dos.writeUTF("Name server has been connected with a id:" + this.id);
-			dos.writeUTF("Enter");
+			dos.writeUTF("enter");
 			int situation = dis.readInt();
 			if (situation == 0) {
 				// sending the request id to bootstrap server
@@ -79,26 +80,38 @@ public class NameServer implements Serializable {
 				ns.successorID = dis.readInt();
 				ns.successorIp = dis.readUTF();
 				ns.successorPort = dis.readInt();
-				ns.predessorID = successorID;
-				ns.predessorIp = successorIp;
-				ns.predessorPort = successorPort;
+				ns.predecessorID = successorID;
+				ns.predecessorIp = successorIp;
+				ns.predecessorPort = successorPort;
+
 				// revieveing the data from bootstrap server
 				ObjectOutputStream os = new ObjectOutputStream(s.getOutputStream());
 				ObjectInputStream is = new ObjectInputStream(s.getInputStream());
-				data = (HashMap<Integer, String>) is.readObject();
-				trail.add(predessorID);
-				System.out.println("SID: " + ns.successorID);
-				System.out.println("PID: " + ns.predessorID);
+				data = (SortedMap<Integer, String>) is.readObject();
+				trail.add(predecessorID);
+
+				System.out.println("Successful Entry");
+				System.out.println("Key range: " + (ns.predecessorID + 1) + " - " + ns.id);
+				System.out.println("Predecessor ID: " + ns.predecessorID + " ::  Successor ID: " + ns.successorID);
+
+				System.out.print("Servers traversed: ");
+				for (int i = 0; i < ns.trail.size(); i++) {
+					System.out.print(" -> ");
+					System.out.print(ns.trail.get(i));
+				}
+				System.out.println();
+
 				s.close();
 			} else {
+
 				dos.writeInt(ns.id);
 				dos.writeUTF(ns.serverIp);
 				dos.writeInt(ns.serverPort);
 				ObjectOutputStream os = new ObjectOutputStream(s.getOutputStream());
 				os.writeObject(ns.trail);
 
+				s.close(); // DS added
 			}
-
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -106,20 +119,23 @@ public class NameServer implements Serializable {
 
 	}
 
-	public void exit(NameServer ns) throws ClassNotFoundException {
-		// Update sucessor.
+	public void exit(NameServer ns) {
+		// Update successor
 		Socket s;
 		try {
 			s = new Socket(ns.successorIp, ns.successorPort);
 			DataInputStream dis = new DataInputStream(s.getInputStream());
 			DataOutputStream dos = new DataOutputStream(s.getOutputStream());
-			dos.writeUTF("Name server has forwarded a exit request id: " + ns.id);
+			dos.writeUTF("Name server has forwarded an exit request id: " + ns.id);
 			dos.writeUTF("Update successor request");
-			dos.writeInt(ns.predessorID);
-			dos.writeUTF(ns.predessorIp);
-			dos.writeInt(ns.predessorPort);
+			dos.writeInt(ns.predecessorID);
+			dos.writeUTF(ns.predecessorIp);
+			dos.writeInt(ns.predecessorPort);
 			ObjectOutputStream os = new ObjectOutputStream(s.getOutputStream());
 			os.writeObject(ns.data);
+			System.out.println("Successful exit");
+			System.out.println("Successor ID: " + ns.successorID);
+			System.out.println("Handing over key range: " + ns.id + " - " + (ns.successorID - 1));
 			s.close();
 		} catch (UnknownHostException e) {
 			// TODO Auto-generated catch block
@@ -130,11 +146,11 @@ public class NameServer implements Serializable {
 		}
 		// update predecessor
 		try {
-			s = new Socket(ns.predessorIp, ns.predessorPort);
+			s = new Socket(ns.predecessorIp, ns.predecessorPort);
 			DataInputStream dis = new DataInputStream(s.getInputStream());
 			DataOutputStream dos = new DataOutputStream(s.getOutputStream());
 			dos.writeUTF("Name server has forwarded a exit request id: " + ns.id);
-			dos.writeUTF("Update predessor request");
+			dos.writeUTF("Update predecessor request");
 			dos.writeInt(ns.successorID);
 			dos.writeUTF(ns.successorIp);
 			dos.writeInt(ns.successorPort);
@@ -153,7 +169,6 @@ public class NameServer implements Serializable {
 		Socket s;
 		try {
 			s = new Socket(successorIp, successorPort);
-			System.out.println("delete request has been forwarded to ID: " + successorID);
 			DataOutputStream dos = new DataOutputStream(s.getOutputStream());
 			dos.writeUTF("Boostrap server has forwarded delete request");
 			dos.writeUTF("Forwarding delete request");
@@ -172,7 +187,6 @@ public class NameServer implements Serializable {
 		Socket s;
 		try {
 			s = new Socket(successorIp, successorPort);
-			System.out.println(" look up request has been forwarded to ID: " + successorID);
 			DataOutputStream dos = new DataOutputStream(s.getOutputStream());
 			dos.writeUTF("Boostrap server has forwarded lookup request");
 			dos.writeUTF("Forwarding lookup request");
@@ -191,7 +205,6 @@ public class NameServer implements Serializable {
 		Socket s;
 		try {
 			s = new Socket(successorIp, successorPort);
-			System.out.println("request has been forwarded to" + successorID);
 			DataInputStream dis = new DataInputStream(s.getInputStream());
 			DataOutputStream dos = new DataOutputStream(s.getOutputStream());
 			dos.writeUTF("Name server has forwarded a request id:" + requestID);
@@ -215,7 +228,6 @@ public class NameServer implements Serializable {
 		Socket s;
 		try {
 			s = new Socket(successorIp, successorPort);
-			System.out.println(" insert request has been forwarded to ID: " + successorID);
 			DataOutputStream dos = new DataOutputStream(s.getOutputStream());
 			dos.writeUTF("Boostrap server has forwarded insert request");
 			dos.writeUTF("Forwarding insert request");
@@ -237,195 +249,191 @@ public class NameServer implements Serializable {
 			return;
 		}
 		NameServer ns = new NameServer(args[0]);
-		ServerSocket ss = new ServerSocket(ns.serverPort);
+		System.out.println("NS::Assigning new thread for this client");
 
-		// running infinite loop for getting
-		// client request
+		Thread c = new NameServerReqHandler(ns);
+		c.start();
+
+		ServerSocket ss = new ServerSocket(ns.serverPort);
 		while (true) {
 			Socket s = null;
 			try {
-				// socket object to receive incoming client requests
+
 				s = ss.accept();
-				// obtaining input and out streams
 				DataInputStream dis = new DataInputStream(s.getInputStream());
 				DataOutputStream dos = new DataOutputStream(s.getOutputStream());
 				String received = dis.readUTF();
-				System.out.println(received);
-				if (received.contains("client")) {
-					// create a new thread object
-					System.out.println("Assigning new thread for this client");
-					// Invoking the start() method
-					Thread c = new NameServerReqHandler(s, dis, dos, ns);
-					c.start();
-				} else {
-					String message = dis.readUTF();
-					System.out.println(message);
-					switch (message) {
-					case "Forwarding entry request":
+				String message = dis.readUTF();
+				switch (message) {
+				case "Forwarding entry request":
+					int requestID = dis.readInt();
+					String requestIp = dis.readUTF();
+					int requestPort = dis.readInt();
+					ObjectInputStream is = new ObjectInputStream(s.getInputStream());
+					ArrayList<Integer> t = (ArrayList<Integer>) is.readObject();
+					if ((requestID > ns.predecessorID && requestID < ns.id)) {
+						// successor found - at successor
+						// update keys
+						int newPredecessorID = ns.predecessorID;
+						String newPredecessorIp = ns.predecessorIp;
+						int newPredecessorPort = ns.predecessorPort;
+						t.add(ns.id);
+						SortedMap<Integer, String> subMap = new TreeMap<Integer, String>();
+						ObjectOutputStream os = new ObjectOutputStream(s.getOutputStream());
+						for (Map.Entry<Integer, String> entry : ns.data.entrySet()) {
+							int currentID = entry.getKey();
+							String currentValue = entry.getValue();
+							if (currentID > ns.predecessorID && currentID <= requestID) {
+								subMap.put(currentID, currentValue);
+							}
+						}
+						for (Map.Entry<Integer, String> entry : subMap.entrySet()) {
+							int currentID = entry.getKey();
+							String currentValue = entry.getValue();
+							if (ns.data.containsKey(currentID)) {
+								ns.data.remove(currentID, currentValue);
+							}
+						}
+						// update predecessor to the new nameserver
+						ns.predecessorID = requestID;
+						ns.predecessorIp = requestIp;
+						ns.predecessorPort = requestPort;
 
-						int requestID = dis.readInt();
-						String requestIp = dis.readUTF();
-						int requestPort = dis.readInt();
-						ObjectInputStream is = new ObjectInputStream(s.getInputStream());
-						ArrayList<Integer> t = (ArrayList<Integer>) is.readObject();
-						if ((requestID > ns.predessorID && requestID < ns.id)) {
-							// successor found
-							// update keys
-							int newPredessorID = ns.predessorID;
-							String newPredessorIp = ns.predessorIp;
-							int newPredessorPort = ns.predessorPort;
-							t.add(ns.id);
-							HashMap<Integer, String> subMap = new HashMap<Integer, String>();
-							ObjectOutputStream os = new ObjectOutputStream(s.getOutputStream());
-							for (Map.Entry<Integer, String> entry : ns.data.entrySet()) {
-								int currentID = entry.getKey();
-								String currentValue = entry.getValue();
-								if (currentID > ns.predessorID && currentID <= requestID) {
-									subMap.put(currentID, currentValue);
-								}
-							}
-							for (Map.Entry<Integer, String> entry : subMap.entrySet()) {
-								int currentID = entry.getKey();
-								String currentValue = entry.getValue();
-								if (ns.data.containsKey(currentID)) {
-									ns.data.remove(currentID, currentValue);
-								}
-							}
-							// update sucessor and predessor
-							ns.predessorID = requestID;
-							ns.predessorIp = requestIp;
-							ns.predessorPort = requestPort;
-							System.out.println("SID: " + ns.successorID);
-							System.out.println("PID: " + ns.predessorID);
-							// sending data to the request server
-							Socket a = new Socket(requestIp, requestPort);
-							dis = new DataInputStream(a.getInputStream());
-							dos = new DataOutputStream(a.getOutputStream());
-							dos.writeUTF("Name server has arrived a response for id:" + requestID);
-							dos.writeUTF("Accepting Forwarding Request");
-							dos.writeInt(ns.id);
-							dos.writeUTF(ns.serverIp);
-							dos.writeInt(ns.serverPort);
-							dos.writeInt(newPredessorID);
-							dos.writeUTF(newPredessorIp);
-							dos.writeInt(newPredessorPort);
-							os = new ObjectOutputStream(a.getOutputStream());
-							os.writeObject(subMap);
-							os.writeObject(t);
-							a.close();
-						} else {
-							ns.forwardEntryRequest(requestID, requestIp, requestPort, ns.successorID, ns.successorIp,
-									ns.successorPort, t);
-							if ((requestID > ns.id && requestID < ns.successorID)
-									|| (requestID > ns.id && ns.successorID == 0)) {
-								ns.successorID = requestID;
-								ns.successorIp = requestIp;
-								ns.successorPort = requestPort;
-								System.out.println("SID: " + ns.successorID);
-								System.out.println("PID: " + ns.predessorID);
-							}
+						// sending data to the request server
+						Socket a = new Socket(requestIp, requestPort);
+						dis = new DataInputStream(a.getInputStream());
+						dos = new DataOutputStream(a.getOutputStream());
+						dos.writeUTF("Name server has arrived a response for id:" + requestID);
+						dos.writeUTF("Accepting Forwarding Request");
+						dos.writeInt(ns.id);
+						dos.writeUTF(ns.serverIp);
+						dos.writeInt(ns.serverPort);
+						dos.writeInt(newPredecessorID);
+						dos.writeUTF(newPredecessorIp);
+						dos.writeInt(newPredecessorPort);
+						os = new ObjectOutputStream(a.getOutputStream());
+						os.writeObject(subMap);
+						os.writeObject(t);
+						a.close();
+					} else {
+						ns.forwardEntryRequest(requestID, requestIp, requestPort, ns.successorID, ns.successorIp,
+								ns.successorPort, t);
+						if ((requestID > ns.id && requestID < ns.successorID)
+								|| (requestID > ns.id && ns.successorID == 0)) {
+							ns.successorID = requestID;
+							ns.successorIp = requestIp;
+							ns.successorPort = requestPort;
 						}
-						break;
-					case "Accepting Forwarding Request":
-						ns.successorID = dis.readInt();
-						ns.successorIp = dis.readUTF();
-						ns.successorPort = dis.readInt();
-						ns.predessorID = dis.readInt();
-						ns.predessorIp = dis.readUTF();
-						ns.predessorPort = dis.readInt();
-						ObjectInputStream is1 = new ObjectInputStream(s.getInputStream());
-						ns.data = (HashMap<Integer, String>) is1.readObject();
-						ns.trail = (ArrayList<Integer>) is1.readObject();
-						break;
-
-					case "Update predessor request":
-						dis = new DataInputStream(s.getInputStream());
-						ns.successorID = dis.readInt();
-						ns.successorIp = dis.readUTF();
-						ns.successorPort = dis.readInt();
-						break;
-
-					case "Update successor request":
-						dis = new DataInputStream(s.getInputStream());
-						ns.predessorID = dis.readInt();
-						ns.predessorIp = dis.readUTF();
-						ns.predessorPort = dis.readInt();
-						is = new ObjectInputStream(s.getInputStream());
-						HashMap<Integer, String> temp = (HashMap<Integer, String>) is.readObject();
-						for (Map.Entry<Integer, String> entry : temp.entrySet()) {
-							ns.data.put(entry.getKey(), entry.getValue());
-						}
-						break;
-					case "Forwarding lookup request":
-						dis = new DataInputStream(s.getInputStream());
-						int lookupKey = dis.readInt();
-						is = new ObjectInputStream(s.getInputStream());
-						ArrayList<Integer> lookupTrail = (ArrayList<Integer>) is.readObject();
-						lookupTrail.add(ns.id);
-						// check if the key belongs here
-						if (lookupKey <= ns.id && lookupKey > ns.predessorID) {
-							String response = ns.data.get(lookupKey);
-							// update the response to bootstarp server
-							Socket s1 = new Socket(ns.bootStrapIp, ns.bootStrapPort);
-							dos = new DataOutputStream(s1.getOutputStream());
-							dos.writeUTF("Name server has forwarded a lookup update");
-							dos.writeUTF("Update lookup response");
-							if (response == null) {
-								response = "Key not found";
-							}
-							dos.writeUTF(response);
-							ObjectOutputStream os = new ObjectOutputStream(s1.getOutputStream());
-							os.writeObject(lookupTrail);
-							s1.close();
-						} else {
-							ns.forwardLookupRequest(lookupKey, ns.successorID, ns.successorIp, ns.successorPort,
-									lookupTrail);
-						}
-						break;
-					case "Forwarding insert request":
-						dis = new DataInputStream(s.getInputStream());
-						int insertKey = dis.readInt();
-						String value = dis.readUTF();
-						is = new ObjectInputStream(s.getInputStream());
-						ArrayList<Integer> insertTrail = (ArrayList<Integer>) is.readObject();
-						insertTrail.add(ns.id);
-						// check if the key is to tobe inseted here
-						if (insertKey > ns.predessorID && insertKey <= ns.id) {
-							ns.data.put(insertKey, value);
-							Socket s1 = new Socket(ns.bootStrapIp, ns.bootStrapPort);
-							dos = new DataOutputStream(s1.getOutputStream());
-							dos.writeUTF("Name server has forwarded a insert update");
-							dos.writeUTF("Update insert response");
-							ObjectOutputStream os = new ObjectOutputStream(s1.getOutputStream());
-							os.writeObject(insertTrail);
-							s1.close();
-						} else {
-							ns.forwardInsertRequest(insertKey, value, ns.successorID, ns.successorIp, ns.successorPort,
-									insertTrail);
-						}
-						break;
-					case "Forwarding delete request":
-						dis = new DataInputStream(s.getInputStream());
-						int delKey = dis.readInt();
-						is = new ObjectInputStream(s.getInputStream());
-						ArrayList<Integer> deleteTrail = (ArrayList<Integer>) is.readObject();
-						deleteTrail.add(ns.id);
-						// check if the key is to to be deleted here
-						if (delKey > ns.predessorID && delKey <= ns.id) {
-							ns.data.remove(delKey);
-							Socket s1 = new Socket(ns.bootStrapIp, ns.bootStrapPort);
-							dos = new DataOutputStream(s1.getOutputStream());
-							dos.writeUTF("Name server has forwarded a lookup update");
-							dos.writeUTF("Update delete response");
-							ObjectOutputStream os = new ObjectOutputStream(s1.getOutputStream());
-							os.writeObject(deleteTrail);
-							s1.close();
-						} else {
-							ns.forwardDeleteRequest(delKey, ns.successorID, ns.successorIp, ns.successorPort,
-									deleteTrail);
-						}
-						break;
 					}
+					break;
+				case "Accepting Forwarding Request":
+					ns.successorID = dis.readInt();
+					ns.successorIp = dis.readUTF();
+					ns.successorPort = dis.readInt();
+					ns.predecessorID = dis.readInt();
+					ns.predecessorIp = dis.readUTF();
+					ns.predecessorPort = dis.readInt();
+					ObjectInputStream is1 = new ObjectInputStream(s.getInputStream());
+					ns.data = (SortedMap<Integer, String>) is1.readObject();
+					ns.trail = (ArrayList<Integer>) is1.readObject();
+					System.out.println("Successful Entry");
+					System.out.println("Key range: " + (ns.predecessorID + 1) + " - " + ns.id);
+					System.out.println("Predecessor ID: " + ns.predecessorID + " ::  Successor ID: " + ns.successorID);
+
+					System.out.print("Servers traversed: ");
+					for (int i = 0; i < ns.trail.size(); i++) {
+						System.out.print(" -> ");
+						System.out.print(ns.trail.get(i));
+					}
+					System.out.println();
+					break;
+
+				case "Update predecessor request":
+					dis = new DataInputStream(s.getInputStream());
+					ns.successorID = dis.readInt();
+					ns.successorIp = dis.readUTF();
+					ns.successorPort = dis.readInt();
+					break;
+
+				case "Update successor request":
+					dis = new DataInputStream(s.getInputStream());
+					ns.predecessorID = dis.readInt();
+					ns.predecessorIp = dis.readUTF();
+					ns.predecessorPort = dis.readInt();
+					is = new ObjectInputStream(s.getInputStream());
+					SortedMap<Integer, String> temp = (SortedMap<Integer, String>) is.readObject();
+					for (Map.Entry<Integer, String> entry : temp.entrySet()) {
+						ns.data.put(entry.getKey(), entry.getValue());
+					}
+					break;
+				case "Forwarding lookup request":
+					dis = new DataInputStream(s.getInputStream());
+					int lookupKey = dis.readInt();
+					is = new ObjectInputStream(s.getInputStream());
+					ArrayList<Integer> lookupTrail = (ArrayList<Integer>) is.readObject();
+					lookupTrail.add(ns.id);
+					// check if the key belongs here
+					if (lookupKey <= ns.id && lookupKey > ns.predecessorID) {
+						String response = ns.data.get(lookupKey);
+						// update the response to bootstarp server
+						Socket s1 = new Socket(ns.bootStrapIp, ns.bootStrapPort);
+						dos = new DataOutputStream(s1.getOutputStream());
+						dos.writeUTF("Name server has forwarded a lookup update");
+						dos.writeUTF("Update lookup response");
+						if (response == null) {
+							response = "Key not found";
+						}
+						dos.writeUTF(response);
+						ObjectOutputStream os = new ObjectOutputStream(s1.getOutputStream());
+						os.writeObject(lookupTrail);
+						s1.close();
+					} else {
+						ns.forwardLookupRequest(lookupKey, ns.successorID, ns.successorIp, ns.successorPort,
+								lookupTrail);
+					}
+					break;
+				case "Forwarding insert request":
+					dis = new DataInputStream(s.getInputStream());
+					int insertKey = dis.readInt();
+					String value = dis.readUTF();
+					is = new ObjectInputStream(s.getInputStream());
+					ArrayList<Integer> insertTrail = (ArrayList<Integer>) is.readObject();
+					insertTrail.add(ns.id);
+					// check if the key is to tobe inseted here
+					if (insertKey > ns.predecessorID && insertKey <= ns.id) {
+						ns.data.put(insertKey, value);
+						Socket s1 = new Socket(ns.bootStrapIp, ns.bootStrapPort);
+						dos = new DataOutputStream(s1.getOutputStream());
+						dos.writeUTF("Name server has forwarded a insert update");
+						dos.writeUTF("Update insert response");
+						ObjectOutputStream os = new ObjectOutputStream(s1.getOutputStream());
+						os.writeObject(insertTrail);
+						s1.close();
+					} else {
+						ns.forwardInsertRequest(insertKey, value, ns.successorID, ns.successorIp, ns.successorPort,
+								insertTrail);
+					}
+					break;
+				case "Forwarding delete request":
+					dis = new DataInputStream(s.getInputStream());
+					int delKey = dis.readInt();
+					is = new ObjectInputStream(s.getInputStream());
+					ArrayList<Integer> deleteTrail = (ArrayList<Integer>) is.readObject();
+					deleteTrail.add(ns.id);
+					// check if the key is to to be deleted here
+					if (delKey > ns.predecessorID && delKey <= ns.id) {
+						ns.data.remove(delKey);
+						Socket s1 = new Socket(ns.bootStrapIp, ns.bootStrapPort);
+						dos = new DataOutputStream(s1.getOutputStream());
+						dos.writeUTF("Name server has forwarded a lookup update");
+						dos.writeUTF("Update delete response");
+						ObjectOutputStream os = new ObjectOutputStream(s1.getOutputStream());
+						os.writeObject(deleteTrail);
+						s1.close();
+					} else {
+						ns.forwardDeleteRequest(delKey, ns.successorID, ns.successorIp, ns.successorPort, deleteTrail);
+					}
+					break;
 				}
 			} catch (Exception e) {
 				s.close();
